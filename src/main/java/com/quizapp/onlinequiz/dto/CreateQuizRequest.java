@@ -7,5 +7,7 @@ import java.util.List;
 public class CreateQuizRequest {
     private String title;
     private String description;
+    private String category;
+    private Integer timeLimitSeconds;
     private List<QuestionRequest> questions;
 }

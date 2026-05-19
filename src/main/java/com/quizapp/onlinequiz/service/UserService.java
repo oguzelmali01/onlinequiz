@@ -26,7 +26,14 @@ public class UserService {
         User newUser = new User();
         newUser.setUsername(request.getUsername());
         newUser.setPassword(passwordEncoder.encode(request.getPassword()));
-        newUser.setRole("USER");
+        
+        // Basit bir admin mantığı: Kullanıcı adı 'admin' ise yetkisi ADMIN olsun
+        if ("admin".equalsIgnoreCase(request.getUsername())) {
+            newUser.setRole("ADMIN");
+        } else {
+            newUser.setRole("USER");
+        }
+        
         newUser.setTotalScore(0);
 
         return userRepository.save(newUser);
@@ -45,5 +52,17 @@ public class UserService {
 
         // 3. Şifre doğruysa, kullanıcıya özel Token üret ve gönder
         return jwtService.generateToken(user.getUsername());
+    }
+
+    // O anki giriş yapmış kullanıcıyı getirir
+    public User getCurrentUser() {
+        String username = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı!"));
+    }
+
+    // Liderlik tablosunu getirir (En yüksek puanlı 10 kullanıcı)
+    public java.util.List<User> getLeaderboard() {
+        return userRepository.findTop10ByOrderByTotalScoreDesc();
     }
 }

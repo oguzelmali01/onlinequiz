@@ -20,4 +20,9 @@ public class Quiz {
     @OneToMany(cascade = CascadeType.ALL)
     @JoinColumn(name = "quiz_id")
     private List<Question> questions;
+    
+    private String category;
+    
+    // Sınavın dakika cinsinden süresi (opsiyonel)
+    private Integer timeLimitSeconds;
 }
