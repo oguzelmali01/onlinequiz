@@ -18,6 +18,11 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Sınav (Quiz) ile ilgili temel iş mantıklarını (business logic) yöneten servis sınıfı.
+ * Yeni sınav ekleme, güncelleme, listeleme ve özellikle sınav sonuçlarının 
+ * değerlendirilip puan hesaplamalarının yapılması bu sınıfta gerçekleşir.
+ */
 @Service
 @RequiredArgsConstructor
 public class QuizService {
@@ -26,7 +31,12 @@ public class QuizService {
     private final UserRepository userRepository;
     private final QuizAttemptRepository quizAttemptRepository;
 
-    // Yeni Quiz Oluşturma
+    /**
+     * Yönetici tarafından gönderilen verilere göre yeni bir sınav (Quiz) ve ona bağlı soruları (Question) oluşturur.
+     * 
+     * @param request Yeni sınavın başlık, kategori ve soru listesini barındıran obje
+     * @return Veritabanına kaydedilen Quiz objesi
+     */
     public Quiz createQuiz(CreateQuizRequest request) {
         Quiz quiz = new Quiz();
         quiz.setTitle(request.getTitle());
@@ -53,7 +63,14 @@ public class QuizService {
         return quizRepository.save(quiz);
     }
 
-    // Quiz Güncelleme
+    /**
+     * Var olan bir sınavın bilgilerini ve soru listesini günceller.
+     * Güncelleme sırasında eski soruları silip tamamen yeni gönderilen soruları kaydeder.
+     * 
+     * @param id Güncellenecek sınavın kimliği
+     * @param request Yeni sınav bilgileri
+     * @return Güncellenmiş ve veritabanına kaydedilmiş Quiz objesi
+     */
     public Quiz updateQuiz(Long id, CreateQuizRequest request) {
         Quiz quiz = quizRepository.findById(id).orElseThrow(() -> new RuntimeException("Quiz bulunamadı!"));
         quiz.setTitle(request.getTitle());
@@ -61,7 +78,7 @@ public class QuizService {
         quiz.setCategory(request.getCategory());
         quiz.setTimeLimitSeconds(request.getTimeLimitSeconds());
 
-        // Eski soruları temizle, yenilerini ekle (Basit bir çözüm)
+        // Eski soruları temizle, yenilerini ekle (Bağlı tablolar JPA tarafından yönetilir)
         quiz.getQuestions().clear();
 
         if (request.getQuestions() != null) {
@@ -79,22 +96,43 @@ public class QuizService {
         return quizRepository.save(quiz);
     }
 
-    // Tüm Quiz'leri Listeleme (React ana sayfada gösterecek)
+    /**
+     * Sistemdeki kayıtlı tüm sınavları getirir.
+     * 
+     * @return Sınav listesi
+     */
     public List<Quiz> getAllQuizzes() {
         return quizRepository.findAll();
     }
 
-    // Tek bir Quiz'i ID'sine göre getirme (Detay/Çözme ekranı için)
+    /**
+     * Belirtilen ID'ye ait sınavı getirir. Bulunamazsa çalışma zamanı hatası fırlatır.
+     * 
+     * @param id Sınav ID'si
+     * @return Bulunan Quiz objesi
+     */
     public Quiz getQuizById(Long id) {
         return quizRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Quiz bulunamadı!"));
     }
 
-    // Quiz Sonuçlarını Hesaplama ve Skoru Kullanıcıya Ekleme
+    /**
+     * Kullanıcının sınava verdiği yanıtları doğrular, kazanılan puanı hesaplar ve kullanıcının genel
+     * profil puanını (Liderlik tablosu için) adil bir şekilde günceller.
+     * 
+     * Puan Hesaplama Mantığı:
+     * - Her doğru cevap 10 puandır.
+     * - Kullanıcı aynı sınavı birden fazla kez çözebilir. 
+     * - Genel skora sadece kullanıcının o sınavdaki 'en yüksek' performansı etki eder (Fark hesaplanır).
+     * 
+     * @param quizId Çözülen sınavın ID'si
+     * @param request Kullanıcının sorulara verdiği cevaplar listesi
+     * @return Kullanıcıya gösterilecek sonuç ve puan metni
+     */
     public String submitQuiz(Long quizId, QuizSubmitRequest request) {
         Quiz quiz = getQuizById(quizId);
         
-        // Güvenlik bağlamından (SecurityContext) o anki giriş yapmış kullanıcının adını al
+        // SecurityContext üzerinden o anki isteği yapan kimliği doğrulanmış kullanıcıyı al
         String username = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
         
         User user = userRepository.findByUsername(username)
@@ -102,13 +140,11 @@ public class QuizService {
 
         int correctAnswersCount = 0;
 
-        // Kullanıcının gönderdiği cevapları döngüyle kontrol ediyoruz
+        // Kullanıcının gönderdiği cevapları kontrol et
         if (request.getAnswers() != null) {
             for (AnswerRequest answer : request.getAnswers()) {
-                // Quiz içindeki doğru soruyu buluyoruz
                 for (Question question : quiz.getQuestions()) {
                     if (question.getId().equals(answer.getQuestionId())) {
-                        // Eğer kullanıcının şıkkı doğru cevaba eşitse doğru sayısını artır
                         if (question.getCorrectAnswer().equalsIgnoreCase(answer.getSelectedOption())) {
                             correctAnswersCount++;
                         }
@@ -117,10 +153,10 @@ public class QuizService {
             }
         }
 
-        // Her doğru cevap için kullanıcıya 10 puan verelim
+        // Toplam doğru sayısına göre puan hesaplama
         int earnedScore = correctAnswersCount * 10;
 
-        // YENİ MANTIK: Kullanıcının bu sınavdaki önceki maksimum puanını bul
+        // Kullanıcının bu sınavdaki geçmiş en yüksek puanını (rekounu) tespit etme
         List<QuizAttempt> previousAttempts = quizAttemptRepository.findByUserIdAndQuizId(user.getId(), quiz.getId());
         int previousMaxScore = 0;
         for (QuizAttempt pa : previousAttempts) {
@@ -129,14 +165,14 @@ public class QuizService {
             }
         }
 
-        // Eğer yeni alınan puan önceki maksimum puandan yüksekse, aradaki farkı genel puana ekle
+        // Adil Puanlama: Eğer yeni alınan puan önceki rekorundan yüksekse, sadece aradaki "farkı" genel toplama ekle.
         if (earnedScore > previousMaxScore) {
             int scoreDifference = earnedScore - previousMaxScore;
             user.setTotalScore(user.getTotalScore() + scoreDifference);
-            userRepository.save(user); // Kullanıcının yeni toplam skorunu veritabanına kaydet
+            userRepository.save(user);
         }
 
-        // Yeni: Quiz Attempt Kaydı (Geçmiş için)
+        // Sınav geçmişini (QuizAttempt tablosu) kaydetme
         QuizAttempt attempt = new QuizAttempt();
         attempt.setUser(user);
         attempt.setQuiz(quiz);
@@ -146,6 +182,7 @@ public class QuizService {
         attempt.setAttemptDate(LocalDateTime.now());
         quizAttemptRepository.save(attempt);
 
+        // Kullanıcı arayüzüne gönderilecek geri bildirim metninin oluşturulması
         if (earnedScore > previousMaxScore) {
             return "Quiz tamamlandı! Doğru Sayısı: " + correctAnswersCount + "/" + quiz.getQuestions().size() + ". Kazanılan Toplam Puan: " + earnedScore + " (Genel skorunuza +" + (earnedScore - previousMaxScore) + " eklendi)";
         } else {
