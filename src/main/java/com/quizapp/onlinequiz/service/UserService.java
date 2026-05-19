@@ -5,6 +5,7 @@ import com.quizapp.onlinequiz.dto.LoginRequest;
 import com.quizapp.onlinequiz.dto.RegisterRequest;
 import com.quizapp.onlinequiz.model.User;
 import com.quizapp.onlinequiz.repository.UserRepository;
+import com.quizapp.onlinequiz.repository.QuizAttemptRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService; // YENİ EKLENDİ
+    private final QuizAttemptRepository quizAttemptRepository;
 
     // Kayıt Olma Metodu (Aynı kalıyor)
     public User registerUser(RegisterRequest request) {
@@ -64,5 +66,25 @@ public class UserService {
     // Liderlik tablosunu getirir (En yüksek puanlı 10 kullanıcı)
     public java.util.List<User> getLeaderboard() {
         return userRepository.findTop10ByOrderByTotalScoreDesc();
+    }
+
+    // O anki giriş yapmış kullanıcıyı siler
+    public void deleteCurrentUser() {
+        User currentUser = getCurrentUser();
+        // Önce kullanıcının geçmiş sınav sonuçlarını sil (Foreign Key hatası almamak için)
+        java.util.List<com.quizapp.onlinequiz.model.QuizAttempt> attempts = quizAttemptRepository.findByUserIdOrderByAttemptDateDesc(currentUser.getId());
+        quizAttemptRepository.deleteAll(attempts);
+        // Sonra kullanıcıyı sil
+        userRepository.delete(currentUser);
+    }
+
+    // Adminin belirli bir kullanıcıyı silmesi
+    public void deleteUserById(Long id) {
+        User user = userRepository.findById(id).orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+        // Önce kullanıcının geçmiş sınav sonuçlarını sil
+        java.util.List<com.quizapp.onlinequiz.model.QuizAttempt> attempts = quizAttemptRepository.findByUserIdOrderByAttemptDateDesc(user.getId());
+        quizAttemptRepository.deleteAll(attempts);
+        // Sonra kullanıcıyı sil
+        userRepository.delete(user);
     }
 }

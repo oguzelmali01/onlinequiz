@@ -38,4 +38,11 @@ public class UserController {
         List<QuizAttempt> history = quizAttemptRepository.findByUserIdOrderByAttemptDateDesc(currentUser.getId());
         return ResponseEntity.ok(history);
     }
+
+    // O anki giriş yapmış kullanıcıyı siler
+    @DeleteMapping("/me")
+    public ResponseEntity<String> deleteMyProfile() {
+        userService.deleteCurrentUser();
+        return ResponseEntity.ok("Hesap başarıyla silindi.");
+    }
 }
